@@ -1,0 +1,16 @@
+{
+  "name": "Uganda Telecom Churn - Python",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  },
+  "forwardPorts": [8501],
+  "postAttachCommand": "echo '✅ Environment ready! Run: streamlit run app/streamlit_app.py'"
+}
