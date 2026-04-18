@@ -1,41 +1,52 @@
+# ============================================================
+# STREAMLIT APP (FINAL CLEAN VERSION)
+# ============================================================
+
 import streamlit as st
 import pandas as pd
 import joblib
 
-st.set_page_config(page_title="Uganda Telecom Churn", layout="centered")
-st.title("📱 Uganda Telecom Customer Churn Predictor")
-st.markdown("**In-Class Demonstration**")
+st.set_page_config(page_title="Churn Predictor", layout="centered")
 
+st.title("📱 Telecom Churn Risk Predictor")
+
+# Load model
 model = joblib.load('/workspaces/uganda-telecom-churn-prediction_group_project_april26/models/churn_model.pkl')
+THRESHOLD = joblib.load('/workspaces/uganda-telecom-churn-prediction_group_project_april26/models/threshold.pkl')
 
+# =========================
+# INPUTS
+# =========================
 st.subheader("Customer Information")
 
-col1, col2 = st.columns(2)
+tenure = st.slider("Tenure", 1, 72, 3)
+monthly_charges = st.slider("Monthly Charges", 1000, 150000, 100000)
+total_charges = st.number_input("Total Charges", 0.0, 20000000.0, 200000.0)
 
-with col1:
-    tenure = st.slider("Tenure (months)", 0, 72, 4)
-    monthly_charges = st.slider("Monthly Charges (UGX)", 1000, 150000, 105000, step=500)
-    total_charges = st.number_input("Total Charges (UGX)", 0.0, 15000000.0, 420000.0)
+contract = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
+internet_service = st.selectbox("Internet", ["DSL", "Fiber optic", "No"])
+payment_method = st.selectbox("Payment Method", [
+    "Electronic check",
+    "Mailed check",
+    "Bank transfer (automatic)",
+    "Credit card (automatic)"
+])
+paperless_billing = st.selectbox("Paperless Billing", ["Yes", "No"])
 
-with col2:
-    contract = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"], index=0)
-    internet_service = st.selectbox("Internet Service", ["No", "DSL", "Fiber optic"], index=2)
-    payment_method = st.selectbox("Payment Method", 
-        ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"], index=0)
-    paperless_billing = st.selectbox("Paperless Billing", ["No", "Yes"], index=1)
+# Services
+online_security = st.selectbox("Online Security", ["No", "Yes"])
+tech_support = st.selectbox("Tech Support", ["No", "Yes"])
+streaming_tv = st.selectbox("Streaming TV", ["No", "Yes"])
+multiple_lines = st.selectbox("Multiple Lines", ["No", "Yes"])
+device_protection = st.selectbox("Device Protection", ["No", "Yes"])
+streaming_movies = st.selectbox("Streaming Movies", ["No", "Yes"])
+online_backup = st.selectbox("Online Backup", ["No", "Yes"])
 
-st.subheader("Services")
-col3, col4 = st.columns(2)
-with col3:
-    online_security = st.selectbox("Online Security", ["No", "Yes"], index=0)
-    tech_support = st.selectbox("Tech Support", ["No", "Yes"], index=0)
-    streaming_tv = st.selectbox("Streaming TV", ["No", "Yes"], index=0)
-with col4:
-    device_protection = st.selectbox("Device Protection", ["No", "Yes"], index=0)
-    streaming_movies = st.selectbox("Streaming Movies", ["No", "Yes"], index=0)
+# =========================
+# PREDICT
+# =========================
+if st.button("🔮 Predict Risk"):
 
-if st.button("🔮 Predict Churn", type="primary", use_container_width=True):
-    
     input_df = pd.DataFrame({
         'tenure': [tenure],
         'MonthlyCharges': [monthly_charges],
@@ -44,60 +55,54 @@ if st.button("🔮 Predict Churn", type="primary", use_container_width=True):
         'InternetService': [internet_service],
         'PaymentMethod': [payment_method],
         'PaperlessBilling': [paperless_billing],
-        'OnlineSecurity': [online_security],
-        'TechSupport': [tech_support],
-        'StreamingTV': [streaming_tv],
-        'StreamingMovies': [streaming_movies],
-        'DeviceProtection': [device_protection],
-        'MultipleLines': ["No"],
+        'PhoneService': [1],
+        'MultipleLines': [1 if multiple_lines == "Yes" else 0],
+        'OnlineSecurity': [1 if online_security == "Yes" else 0],
+        'OnlineBackup': [1 if online_backup == "Yes" else 0],
+        'DeviceProtection': [1 if device_protection == "Yes" else 0],
+        'TechSupport': [1 if tech_support == "Yes" else 0],
+        'StreamingTV': [1 if streaming_tv == "Yes" else 0],
+        'StreamingMovies': [1 if streaming_movies == "Yes" else 0],
         'gender': ['Male'],
         'SeniorCitizen': [0],
         'Partner': ['No'],
-        'Dependents': ['No'],
-        'PhoneService': ['Yes'],
-        'OnlineBackup': ['No']
+        'Dependents': ['No']
     })
 
-    # Feature Engineering
-    input_df['Avg_Monthly_Spend'] = input_df['TotalCharges'] / input_df['tenure'].replace(0, 1)
-    input_df['Tenure_to_Charge_Ratio'] = input_df['tenure'] / input_df['MonthlyCharges']
-    input_df['Service_Count'] = input_df[['OnlineSecurity','TechSupport','StreamingTV',
-                                          'StreamingMovies','DeviceProtection']].apply(
-        lambda x: x.map({'Yes':1, 'No':0}).sum(), axis=1)
+    # Feature engineering
+    input_df['tenure'] = input_df['tenure'].replace(0, 1)
+    input_df['Avg_Monthly_Spend'] = input_df['TotalCharges'] / input_df['tenure']
+    input_df['Charge_per_Tenure'] = input_df['MonthlyCharges'] / input_df['tenure']
 
-    # One-hot encoding
-    input_encoded = pd.get_dummies(input_df, drop_first=True)
+    service_cols = [
+        'PhoneService','MultipleLines','OnlineSecurity','OnlineBackup',
+        'DeviceProtection','TechSupport','StreamingTV','StreamingMovies'
+    ]
 
-    # Align with model
-    input_encoded = input_encoded.reindex(columns=model.feature_names_in_, fill_value=0)
+    input_df['Service_Count'] = input_df[service_cols].sum(axis=1)
 
-    pred = model.predict(input_encoded)[0]
-    prob = model.predict_proba(input_encoded)[0][1]
+    # =========================
+    # PREDICT (PIPELINE HANDLES EVERYTHING)
+    # =========================
+    prob = model.predict_proba(input_df)[0][1]
 
-    if pred == 1:
-        st.error(f"🚨 HIGH RISK — This customer is likely to CHURN")
-        st.metric("Churn Probability", f"{prob:.1%}")
+    # =========================
+    # OUTPUT
+    # =========================
+    st.metric("Churn Probability", f"{prob:.2%}")
+    st.write("Raw probability:", prob)
+
+    if prob > THRESHOLD:
+        st.error("🚨 HIGH RISK")
     else:
-        st.success(f"✅ LOW RISK — This customer is likely to STAY")
-        st.metric("Churn Probability", f"{prob:.1%}")
+        st.success("✅ LOW RISK")
 
-    risk = "🔴 High Risk" if prob > 0.70 else "🟠 Medium Risk" if prob > 0.45 else "🟢 Low Risk"
-    st.info(f"**Risk Level:** {risk}")
-
-    st.subheader("Why this prediction?")
-    if prob < 0.45:
-        st.success("Low risk factors detected.")
+    # Risk bands
+    if prob > 0.75:
+        st.write("🔴 Very High Risk")
+    elif prob > 0.55:
+        st.write("🔴 High Risk")
+    elif prob > 0.35:
+        st.write("🟠 Medium Risk")
     else:
-        st.warning("High risk factors:")
-        if contract == "Month-to-month":
-            st.write("• Month-to-month contract")
-        if tenure < 12:
-            st.write("• Very short tenure")
-        if monthly_charges > 70000:
-            st.write("• High monthly charges")
-        if internet_service == "Fiber optic":
-            st.write("• Fiber optic service")
-        if payment_method == "Electronic check":
-            st.write("• Electronic check payment method")
-
-st.caption("Uganda Telecom Churn Prediction Project")
+        st.write("🟢 Low Risk")

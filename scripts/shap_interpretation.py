@@ -1,57 +1,112 @@
-# SHAP interpretation - Using Tuned Logistic Regression Model
+# ============================================================
+# SHAP INTERPRETATION (FINAL WORKING VERSION)
+# ============================================================
+
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import shap
 import joblib
 import os
+import matplotlib.pyplot as plt
 import warnings
+
 warnings.filterwarnings("ignore")
 
-# File paths
+# ============================================================
+# PATHS
+# ============================================================
+
 MODELS_PATH = '/workspaces/uganda-telecom-churn-prediction_group_project_april26/models/'
+DATA_PATH = '/workspaces/uganda-telecom-churn-prediction_group_project_april26/data/processed/'
 FIGURES_PATH = '/workspaces/uganda-telecom-churn-prediction_group_project_april26/reports/figures/'
 
-# Create figures folder if it doesn't exist
 os.makedirs(FIGURES_PATH, exist_ok=True)
 
-# Load the TUNED model (churn_model.pkl)
-print("Loading tuned model and data...")
-best_lr_model = joblib.load(MODELS_PATH + 'churn_model.pkl')
-X_train, X_test, y_train, y_test = joblib.load(MODELS_PATH + 'train_test_data.pkl')
-print("Tuned model and data loaded successfully!")
+# ============================================================
+# LOAD MODEL (FIRST!)
+# ============================================================
+
+print("Loading model...")
+model = joblib.load(MODELS_PATH + 'churn_model.pkl')
+
+# ============================================================
+# LOAD DATA
+# ============================================================
+
+print("Loading dataset...")
+df = pd.read_csv(DATA_PATH + 'engineered_telecom_churn.csv')
+
+df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
+X = df.drop('Churn', axis=1)
 
 # Sample for speed
-X_test_sample = X_test.sample(100, random_state=42)
+X_sample = X.sample(50, random_state=42)
 
-# Create SHAP explainer for Logistic Regression (LinearExplainer is best & fastest)
+print("Sample shape:", X_sample.shape)
+
+# ============================================================
+# TRANSFORM DATA (NOW MODEL EXISTS)
+# ============================================================
+
+print("Transforming data...")
+
+preprocessor = model.named_steps['preprocessor']
+X_transformed = preprocessor.transform(X_sample)
+
+# Convert sparse → dense if needed
+if hasattr(X_transformed, "toarray"):
+    X_transformed = X_transformed.toarray()
+
+print("Transformed shape:", X_transformed.shape)
+
+# ============================================================
+# SHAP EXPLAINER
+# ============================================================
+
+print("Creating SHAP explainer...")
+
+lr_model = model.named_steps['model']
+
+explainer = shap.Explainer(lr_model, X_transformed)
+
 print("Computing SHAP values...")
-explainer = shap.LinearExplainer(best_lr_model.named_steps['logisticregression'], 
-                                 best_lr_model.named_steps['standardscaler'].transform(X_train))
+shap_values = explainer(X_transformed)
 
-# Get SHAP values
-shap_values = explainer.shap_values(best_lr_model.named_steps['standardscaler'].transform(X_test_sample))
+print("SHAP computed successfully!")
 
-print("SHAP values shape:", shap_values.shape)
+# ============================================================
+# FEATURE NAMES
+# ============================================================
 
-# Summary Plot (Beeswarm)
-print("Generating SHAP Summary Plot...")
-shap.summary_plot(shap_values, X_test_sample, 
-                  feature_names=X_train.columns.tolist(), 
-                  show=False)
-plt.tight_layout()
-plt.savefig(FIGURES_PATH + '11_shap_summary_plot.png', dpi=150, bbox_inches='tight')
+feature_names = preprocessor.get_feature_names_out()
+
+# ============================================================
+# PLOTS
+# ============================================================
+
+# Summary plot
+shap.summary_plot(
+    shap_values.values,
+    X_transformed,
+    feature_names=feature_names,
+    show=False
+)
+plt.savefig(FIGURES_PATH + 'shap_summary.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("Saved: 11_shap_summary_plot.png")
 
-# Bar Plot (Global Feature Importance)
-print("\nGenerating SHAP Bar Plot...")
-shap.summary_plot(shap_values, X_test_sample, 
-                  feature_names=X_train.columns.tolist(), 
-                  plot_type='bar', show=False)
-plt.tight_layout()
-plt.savefig(FIGURES_PATH + '12_shap_bar_plot.png', dpi=150, bbox_inches='tight')
+# Bar plot
+shap.summary_plot(
+    shap_values.values,
+    X_transformed,
+    feature_names=feature_names,
+    plot_type="bar",
+    show=False
+)
+plt.savefig(FIGURES_PATH + 'shap_bar.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("Saved: 12_shap_bar_plot.png")
 
-print("\nSHAP Interpretation using Tuned Model Completed Successfully!")
+# Waterfall plot
+shap.plots.waterfall(shap_values[0], show=False)
+plt.savefig(FIGURES_PATH + 'shap_waterfall.png', dpi=150, bbox_inches='tight')
+plt.close()
+
+print("\n✅ SHAP completed successfully!")
